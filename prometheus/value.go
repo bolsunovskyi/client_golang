@@ -70,7 +70,7 @@ func newValue(desc *Desc, valueType ValueType, val float64, labelValues ...strin
 		labelPairs: makeLabelPairs(desc, labelValues),
 	}
 	result.init(result)
-	storage.Set(desc.fqName, val)
+	storage.Set(result.getKey(), val)
 	return result
 }
 
@@ -80,7 +80,7 @@ func (v *value) Desc() *Desc {
 
 func (v *value) Set(val float64) {
 	atomic.StoreUint64(&v.valBits, math.Float64bits(val))
-	storage.Set(v.desc.fqName, val)
+	storage.Set(v.getKey(), val)
 }
 
 func (v *value) SetToCurrentTime() {
@@ -95,15 +95,23 @@ func (v *value) Dec() {
 	v.Add(-1)
 }
 
+func (v *value) getKey() string {
+	key := v.desc.fqName
+	if v.labelPairs != nil && len(v.labelPairs) > 0 {
+		key += fmt.Sprintf("/%s", *v.labelPairs[0].Value)
+	}
+	return key
+}
+
 func (v *value) Add(val float64) {
 	for {
 		oldBits := atomic.LoadUint64(&v.valBits)
-		oldVal, _ := storage.Get(v.desc.fqName)
+		oldVal, _ := storage.Get(v.getKey())
 		newVal := oldVal + val
 		newBits := math.Float64bits(newVal)
 
 		if atomic.CompareAndSwapUint64(&v.valBits, oldBits, newBits) {
-			storage.Set(v.desc.fqName, newVal)
+			storage.Set(v.getKey(), newVal)
 			return
 		}
 	}
@@ -115,7 +123,7 @@ func (v *value) Sub(val float64) {
 
 func (v *value) Write(out *dto.Metric) error {
 	//val := math.Float64frombits(atomic.LoadUint64(&v.valBits))
-	val, _ := storage.Get(v.desc.fqName)
+	val, _ := storage.Get(v.getKey())
 	return populateMetric(v.valType, val, v.labelPairs, out)
 }
 
